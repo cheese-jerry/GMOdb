@@ -1,23 +1,17 @@
 import pymysql
-pymysql.install_as_MySQLdb()
-from flask import Flask,jsonify
-from connection import get_db_connection,get_db
+from datetime import datetime
+from connection import get_db_connection
 from prompt_execute_example_parameter import create_prompt_execute_example_parameter
 
-app = Flask(__name__)
-db = get_db()
-
-class Prompt_execute_example(db.Model):
-    __tablename__ = "prompt_execute_example"
-
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
-    prompt_id = db.Column(db.BigInteger, db.ForeignKey('prompts.id'), nullable=False, index=True)
-    sender = db.Column(db.Integer, nullable=False)
-    message_text = db.Column(db.String(500), nullable=True)
-    send_time = db.Column(db.TIMESTAMP, nullable=True)
-    created_at = db.Column(db.TIMESTAMP, nullable=False, default=db.func.current_timestamp())
-    updated_at = db.Column(db.TIMESTAMP, nullable=False, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
-
+class Prompt_execute_example:
+    def __init__(self, id=None, prompt_id=None, sender=None, message_text=None, send_time=None, created_at=None, updated_at=None):
+        self.id = id
+        self.prompt_id = prompt_id
+        self.sender = sender
+        self.message_text = message_text
+        self.send_time = send_time
+        self.created_at = created_at
+        self.updated_at = updated_at
 
     def to_dict(self):
         return {
@@ -30,8 +24,9 @@ class Prompt_execute_example(db.Model):
             'updated_at': self.updated_at
         }
 
+
 def create_prompt_execute_example(event,prompt_id):
-    prompt = event.get_json()
+    #prompt = event.get_json()
     prompt = event["body"] 
     prompt_execute_example_list = prompt['prompt_example']
 
@@ -57,4 +52,37 @@ def create_prompt_execute_example(event,prompt_id):
     finally:
         connection.close()    
 
-    return new_prompt_execute_example.id   
+    return new_prompt_execute_example.id 
+
+def get_prompt_execute_example_by_promptID(prompt_id):
+    dic_list = []
+    connection = get_db_connection()
+    try:
+        with connection.cursor() as cursor:
+            # 指定されたprompt_idに関連するprompt_execute_exampleを取得
+            sql = "SELECT * FROM prompt_execute_example WHERE prompt_id = %s"
+            cursor.execute(sql, (prompt_id,))
+            result = cursor.fetchall()
+
+            for row in result:
+                prompt_execute_example = Prompt_execute_example(
+                    #id=row['id'],
+                    #prompt_id=row['prompt_id'],
+                    sender=row['sender'],
+                    message_text=row['message_text'],
+                    #send_time=row['send_time'],
+                    created_at=row['created_at'],
+                    #updated_at=row['updated_at']
+                )
+                dic_list.append(prompt_execute_example.to_dict())
+    finally:
+        connection.close()
+    # created_atでソート（昇順）
+    dic_list = sorted(dic_list, key=lambda x: x['created_at'])
+
+     # dic_listの各辞書からcreated_atを削除
+    for dic in dic_list:
+        if 'created_at' in dic:
+            del dic['created_at']
+
+    return dic_list

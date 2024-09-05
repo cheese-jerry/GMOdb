@@ -1,19 +1,15 @@
 import pymysql
-pymysql.install_as_MySQLdb()
-from flask import Flask,jsonify
-from connection import get_db_connection,get_db
+from datetime import datetime
+from connection import get_db_connection
 
-app = Flask(__name__)
-db = get_db()
-
-class Prompt_execute_example_parameter(db.Model):
-    __tablename__ = "prompt_execute_example_parameter"
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
-    prompt_id = db.Column(db.BigInteger, db.ForeignKey('prompts.id'), nullable=False, index=True)
-    parameter_name = db.Column(db.String(15), nullable=True)
-    example = db.Column(db.String(20), nullable=True)
-    created_at = db.Column(db.TIMESTAMP, nullable=False, default=db.func.current_timestamp())
-    updated_at = db.Column(db.TIMESTAMP, nullable=False, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+class Prompt_execute_example_parameter:
+    def __init__(self, id=None, prompt_id=None, parameter_name=None, example=None, created_at=None, updated_at=None):
+        self.id = id
+        self.prompt_id = prompt_id
+        self.parameter_name = parameter_name
+        self.example = example
+        self.created_at = created_at or datetime.utcnow()
+        self.updated_at = updated_at or datetime.utcnow()
 
     def to_dict(self):
         return {
@@ -26,7 +22,7 @@ class Prompt_execute_example_parameter(db.Model):
         }
 
 def create_prompt_execute_example_parameter(event,prompt_id):
-    prompt = event.get_json()
+    #prompt = event.get_json()
     prompt = event["body"]
     prompt_execute_example_parameters_list = prompt['prompt_parameters']
 
@@ -50,5 +46,31 @@ def create_prompt_execute_example_parameter(event,prompt_id):
                 new_prompt_execute_example_parameter.id = cursor.lastrowid  # 挿入されたIDを取得
     finally:
         connection.close()    
-
     return new_prompt_execute_example_parameter.id   
+
+def get_prompt_execute_example_parameter_by_promptID(prompt_id):
+    dic_list = []
+    connection = get_db_connection()
+    try:
+        with connection.cursor() as cursor:
+            # 指定された prompt_id に関連する prompt_execute_example_parameter を取得
+            sql = "SELECT * FROM prompt_execute_example_parameter WHERE prompt_id = %s"
+            cursor.execute(sql, (prompt_id,))
+            result = cursor.fetchall()
+
+            for row in result:
+                # 各レコードを Prompt_execute_example_parameter オブジェクトに変換
+                prompt_execute_example_parameter = Prompt_execute_example_parameter(
+                    #id=row['id'],
+                    #prompt_id=row['prompt_id'],
+                    parameter_name=row['parameter_name'],
+                    example=row['example'],
+                    #created_at=row['created_at'],
+                    #updated_at=row['updated_at']
+                )
+                dic_list.append(prompt_execute_example_parameter.to_dict())
+
+    finally:
+        connection.close()
+
+    return dic_list

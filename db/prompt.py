@@ -1,27 +1,22 @@
 import pymysql
-pymysql.install_as_MySQLdb()
-from flask import Flask,jsonify
 from datetime import datetime
-from connection import get_db_connection,get_db
-from prompt_execute_example import create_prompt_execute_example
+from connection import get_db_connection
+from prompt_execute_example import create_prompt_execute_example,get_prompt_execute_example_by_promptID
+from prompt_execute_example_parameter import get_prompt_execute_example_parameter_by_promptID
 
-app = Flask(__name__)
-db = get_db()
-
-class Prompt(db.Model):
-    __tablename__ = "prompt"
-    id = db.Column(db.BigInteger,
-                   primary_key=True,
-                   autoincrement=True)
-    user_id = db.Column(db.Integer, primary_key=True, autoincrement=False)
-    prompt_introduction_text = db.Column(db.String(200))
-    prompt_name = db.Column(db.String(25))
-    prompt_view_count = db.Column(db.Integer)
-    prompt_welcome_message = db.Column(db.String(100))
-    prompt_head = db.Column(db.String(500))
-    create_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    update_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    
+class Prompt:
+    def __init__(self, id=None, user_id=None, prompt_introduction_text=None, prompt_name=None, 
+                 prompt_view_count=None, prompt_welcome_message=None, prompt_head=None, 
+                 create_at=None, update_at=None):
+        self.id = id
+        self.user_id = user_id
+        self.prompt_introduction_text = prompt_introduction_text
+        self.prompt_name = prompt_name
+        self.prompt_view_count = prompt_view_count
+        self.prompt_welcome_message = prompt_welcome_message
+        self.prompt_head = prompt_head
+        self.create_at = create_at
+        self.update_at = update_at
 
     def to_dict(self):
         return {
@@ -31,54 +26,41 @@ class Prompt(db.Model):
             'prompt_name': self.prompt_name,
             'prompt_view_count': self.prompt_view_count,
             'prompt_welcome_message': self.prompt_welcome_message,
-            "prompt_head":self.prompt_head,
+            'prompt_head': self.prompt_head,
             'create_at': self.create_at,
             'update_at': self.update_at
         }
-    
+
 def prompt_list():
-    # open db get connection
     connection = get_db_connection()
     try:
         with connection.cursor() as cursor:
-            # SQL query
-           
             sql = "SELECT * FROM prompt"
             cursor.execute(sql)
-            
-            # get sql query result
             result = cursor.fetchall()
-            
-            # result reflect to db model Prompt
+
             prompts = []
             for row in result:
                 prompt = Prompt(
                     id=row['id'],
                     user_id=row['user_id'],
                     prompt_introduction_text=row['prompt_introduction_text'],
-                    prompt_name = row['prompt_name'],
-                    prompt_view_count = row['prompt_view_count'],
-                    prompt_welcome_message =  row['prompt_welcome_message'],
-                    prompt_head = row['prompt_head'],
+                    prompt_name=row['prompt_name'],
+                    prompt_view_count=row.get('prompt_view_count', None),
+                    prompt_welcome_message=row['prompt_welcome_message'],
+                    prompt_head=row['prompt_head'],
                     create_at=row['create_at'],
                     update_at=row['update_at']
                 )
                 prompts.append(prompt.to_dict())
-    
     finally:
-        connection.close()  # close db connection
+        connection.close()
     
-    # return JSON    
-    with app.app_context():
-        return jsonify(prompts)
-
-
-
+    return prompts
 
 def create_prompt(event):
-    data = event.get_json()
-    data = event["body"] 
-     # reflect to db model Prompt
+    #data = event.get_json()
+    data = event["body"]
     new_prompt = Prompt(
         user_id=data['user_id'],
         prompt_introduction_text=data['prompt_introduction_text'],
@@ -88,56 +70,97 @@ def create_prompt(event):
         create_at=datetime.utcnow(),
         update_at=datetime.utcnow()
     )
-    with app.app_context():
-        connection = get_db_connection()
-        try:
-            # from db model Prompt get information and insert into db
-            with connection.cursor() as cursor:
-                sql = """INSERT INTO prompt (user_id, prompt_introduction_text, prompt_name,prompt_head, prompt_welcome_message)
-                        VALUES (%s, %s, %s, %s, %s)"""
-                cursor.execute(sql, (
-                    new_prompt.user_id,
-                    new_prompt.prompt_introduction_text,
-                    new_prompt.prompt_name,
-                    new_prompt.prompt_head,
-                    new_prompt.prompt_welcome_message
-                ))
-                new_prompt_id = cursor.lastrowid
-                print("=========================")
-                print(new_prompt_id)
-                create_prompt_execute_example(event,new_prompt_id)
-                connection.commit()
-                new_prompt.id = cursor.lastrowid  # 挿入されたIDを取得
-        finally:
-            connection.close()
 
-        return new_prompt.id
+    connection = get_db_connection()
+    try:
+        with connection.cursor() as cursor:
+            sql = """INSERT INTO prompt (user_id, prompt_introduction_text, prompt_name, prompt_head, prompt_welcome_message)
+                     VALUES (%s, %s, %s, %s, %s)"""
+            cursor.execute(sql, (
+                new_prompt.user_id,
+                new_prompt.prompt_introduction_text,
+                new_prompt.prompt_name,
+                new_prompt.prompt_head,
+                new_prompt.prompt_welcome_message
+            ))
+            new_prompt_id = cursor.lastrowid
+            create_prompt_execute_example(event, new_prompt_id)
+            connection.commit()
+            new_prompt.id = new_prompt_id
+    finally:
+        connection.close()
+
+    return new_prompt.id
+
+def get_prompt_by_ID(prompt_id):
+    connection = get_db_connection()
+    try:
+        with connection.cursor() as cursor:
+            # SQLクエリを準備して、IDに基づいてpromptを取得
+            sql = "SELECT * FROM prompt WHERE id = %s;"
+            cursor.execute(sql, (prompt_id,))
+            result = cursor.fetchone()  # 単一のレコードを取得
+            if result:
+                resdic = {}
+                # 結果を Prompt オブジェクトにマッピング
+                prompt = Prompt(
+                    id=result['id'],
+                    user_id=result['user_id'],
+                    prompt_introduction_text=result['prompt_introduction_text'],
+                    prompt_name=result['prompt_name'],
+                    prompt_view_count=result.get('prompt_view_count', None),
+                    prompt_welcome_message=result['prompt_welcome_message'],
+                    prompt_head=result['prompt_head'],
+                    create_at=result['create_at'],
+                    update_at=result['update_at']
+                )
+                resdic = prompt.to_dict()
+                prompt_example_list = get_prompt_execute_example_by_promptID(prompt_id)
+                prompt_example_parameters_list = get_prompt_execute_example_parameter_by_promptID(prompt_id)
+                resdic["prompt_example"] = prompt_example_list
+                resdic["prompt_parameters"] = prompt_example_parameters_list
+                return resdic
+            else:
+                # 該当するIDのレコードがない場合
+                return None
+    finally:
+        connection.close()
 
 
-#for local test
+
+# for local test
 test_event = {
   "body": {
-    "prompt_name": "string",
-    "user_id": 0,
-    "prompt_introduction_text": "string",
-    "prompt_welcome_message": "校正したい文を入力して",
-    "prompt_head": "以下の文を校正してください。{{変数1}}",
+    "prompt_name": "demo",
+    "user_id": 999999,
+    "prompt_introduction_text": "demo",
+    "prompt_welcome_message": "hello my name is demo",
+    "prompt_head": "以下の文を校正してください。{{変数11}}",
     "prompt_example": [
       {
         "sender": "ai",
-        "message_text": "以下のように修正します。「ごめんなさい。」"
+        "message_text": "これはデモ"
       }
     ],
     "prompt_parameters": [
       {
         "parameter_name": "変数1",
-        "parameter_example": "ごめんなさい"
+        "parameter_example": "変数デモ"
       }
     ]
   }
+
 }
 
-import json
+promptlist = prompt_list()
+print(promptlist)
 
-res = create_prompt(test_event)
-print(res)
+#id = create_prompt(test_event)
+#print(id)
+
+#res = get_prompt_by_ID(15)
+#print(res)
+
+
+
+
